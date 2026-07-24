@@ -1,0 +1,64 @@
+diff --git a/src/dxgi/dxgi_options.h b/src/dxgi/dxgi_options.h
+--- a/src/dxgi/dxgi_options.h
++++ b/src/dxgi/dxgi_options.h
+@@ -52,6 +52,12 @@ namespace dxvk {
+     /// Forced refresh rate, disable other modes
+     uint32_t forceRefreshRate;
+ 
++    /// Move the selected physical DXGI output to output index 0.
++    /// A negative value keeps the normal enumeration order.
++    /// This is a compatibility workaround for games that always
++    /// select IDXGIAdapter::EnumOutputs(0).
++    int32_t outputIndex;
++
+   private:
+ 
+     std::atomic<uint32_t> m_useCount = { 0u };
+diff --git a/src/dxgi/dxgi_options.cpp b/src/dxgi/dxgi_options.cpp
+--- a/src/dxgi/dxgi_options.cpp
++++ b/src/dxgi/dxgi_options.cpp
+@@ -157,6 +157,7 @@ namespace dxvk {
+     this->maxFrameRate     = config.getOption<int32_t>("dxvk.maxFrameRate", config.getOption<int32_t>("dxgi.maxFrameRate", 0));
+     this->syncInterval     = config.getOption<int32_t>("dxgi.syncInterval", -1);
+     this->forceRefreshRate = config.getOption<uint32_t>("dxgi.forceRefreshRate", 0u);
++    this->outputIndex      = config.getOption<int32_t>("dxgi.outputIndex", -1);
+ 
+     // We don't support dcomp swapchains and some games may rely on them failing on creation
+     this->enableDummyCompositionSwapchain = config.getOption<bool>("dxgi.enableDummyCompositionSwapchain", false);
+diff --git a/src/dxgi/dxgi_adapter.cpp b/src/dxgi/dxgi_adapter.cpp
+--- a/src/dxgi/dxgi_adapter.cpp
++++ b/src/dxgi/dxgi_adapter.cpp
+@@ -124,10 +124,31 @@ namespace dxvk {
+     if (m_factory->UseMonitorFallback())
+       adapterLUIDs.clear();
+ 
++    // Optional compatibility override for games which always use output 0.
++    // Move the configured physical output to the front while preserving all
++    // other outputs and avoiding duplicate enumeration.
++    UINT physicalOutput = Output;
++
++    const DxgiOptions* options = m_factory->GetOptions();
++    if (options->outputIndex >= 0) {
++      const UINT selectedOutput = UINT(options->outputIndex);
++
++      if (Output == 0)
++        physicalOutput = selectedOutput;
++      else if (Output <= selectedOutput)
++        physicalOutput = Output - 1;
++    }
++
+     for (const auto& luid : adapterLUIDs)
+       luidPointers.push_back(&luid);
+ 
+-    HMONITOR monitor = wsi::enumMonitors(luidPointers.data(), luidPointers.size(), Output);
++    HMONITOR monitor = wsi::enumMonitors(
++      luidPointers.data(), luidPointers.size(), physicalOutput);
++
++    if (monitor != nullptr && options->outputIndex >= 0 && Output == 0) {
++      Logger::info(str::format(
++        "DXGI: Forcing physical output ", physicalOutput,
++        " to IDXGI output 0"));
++    }
+ 
+     if (monitor == nullptr)
+       return DXGI_ERROR_NOT_FOUND;

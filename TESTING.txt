@@ -1,0 +1,29 @@
+AC Unity patched DXVK test instructions
+========================================
+
+1. Close Assassin's Creed Unity.
+2. Find the folder containing ACU.exe.
+3. Back up any existing d3d11.dll, dxgi.dll, dxvk.conf, and DXVK log files.
+4. Copy x64\d3d11.dll, x64\dxgi.dll, and dxvk.conf from this artifact beside ACU.exe.
+5. Start with this setting in dxvk.conf:
+
+       dxgi.outputIndex = 1
+
+6. Launch AC Unity and test exclusive fullscreen.
+7. Open ACU_dxgi.log and look for:
+
+       DXGI: Forcing physical output 1 to IDXGI output 0
+
+8. Confirm that 2560x1440 is available and fullscreen opens on the 1440p/260 Hz display.
+9. If it still targets the 1080p display, close the game, change the option to 0, and test again:
+
+       dxgi.outputIndex = 0
+
+Rollback
+--------
+Delete the custom d3d11.dll and dxgi.dll and restore your backups.
+
+Warning
+-------
+This is an experimental, unofficial DXVK build. Use it only with AC Unity.
+Do not use modified graphics DLLs in anti-cheat-protected or competitive online games.
