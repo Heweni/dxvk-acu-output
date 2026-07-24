@@ -1,56 +1,58 @@
 from pathlib import Path
+import re
 
 
-def replace_once(path: str, old: str, new: str) -> None:
+def edit_once(path: str, pattern: str, replacement: str, flags: int = 0) -> None:
     file_path = Path(path)
     text = file_path.read_text(encoding="utf-8")
-    count = text.count(old)
+    updated, count = re.subn(pattern, replacement, text, count=1, flags=flags)
     if count != 1:
-        raise SystemExit(f"Expected exactly one match in {path}, found {count}")
-    file_path.write_text(text.replace(old, new, 1), encoding="utf-8")
+        raise SystemExit(f"Expected exactly one regex match in {path}, found {count}")
+    file_path.write_text(updated, encoding="utf-8")
 
 
-replace_once(
+# Add the configuration field directly after forceRefreshRate, tolerating
+# whitespace/alignment differences in the tagged source.
+edit_once(
     "src/dxgi/dxgi_options.h",
-    "    /// Forced refresh rate, disable other modes\n"
-    "    uint32_t forceRefreshRate;\n",
-    "    /// Forced refresh rate, disable other modes\n"
-    "    uint32_t forceRefreshRate;\n\n"
-    "    /// Move the selected physical DXGI output to output index 0.\n"
-    "    /// A negative value keeps the normal enumeration order.\n"
-    "    int32_t outputIndex;\n",
+    r"(?m)^(\s*uint32_t\s+forceRefreshRate\s*;\s*)$",
+    r"\1\n\n    /// Move the selected physical DXGI output to output index 0.\n"
+    r"    /// A negative value keeps the normal enumeration order.\n"
+    r"    int32_t outputIndex;",
 )
 
-replace_once(
+# Insert config parsing after the existing force-refresh-rate option.
+edit_once(
     "src/dxgi/dxgi_options.cpp",
-    '    this->forceRefreshRate = config.getOption("dxgi.forceRefreshRate", 0u);\n',
-    '    this->forceRefreshRate = config.getOption("dxgi.forceRefreshRate", 0u);\n'
-    '    this->outputIndex      = config.getOption("dxgi.outputIndex", -1);\n',
+    r'(?m)^(\s*this->forceRefreshRate\s*=\s*config\.getOption\("dxgi\.forceRefreshRate",\s*0u\);\s*)$',
+    r'\1\n    this->outputIndex = config.getOption("dxgi.outputIndex", -1);',
 )
 
-replace_once(
+# Replace only the monitor enumeration statement. Keeping the surrounding
+# source untouched makes this resilient to formatting changes.
+edit_once(
     "src/dxgi/dxgi_adapter.cpp",
-    "    for (const auto& luid : adapterLUIDs)\n"
-    "      luidPointers.push_back(&luid);\n\n"
-    "    HMONITOR monitor = wsi::enumMonitors(luidPointers.data(), luidPointers.size(), Output);\n",
-    "    UINT physicalOutput = Output;\n\n"
-    "    const DxgiOptions* options = m_factory->GetOptions();\n"
-    "    if (options->outputIndex >= 0) {\n"
-    "      const UINT selectedOutput = UINT(options->outputIndex);\n\n"
-    "      if (Output == 0)\n"
-    "        physicalOutput = selectedOutput;\n"
-    "      else if (Output <= selectedOutput)\n"
-    "        physicalOutput = Output - 1;\n"
-    "    }\n\n"
-    "    for (const auto& luid : adapterLUIDs)\n"
-    "      luidPointers.push_back(&luid);\n\n"
-    "    HMONITOR monitor = wsi::enumMonitors(\n"
-    "      luidPointers.data(), luidPointers.size(), physicalOutput);\n\n"
-    "    if (monitor != nullptr && options->outputIndex >= 0 && Output == 0) {\n"
-    "      Logger::info(str::format(\n"
-    '        "DXGI: Forcing physical output ", physicalOutput,\n'
-    '        " to IDXGI output 0"));\n'
-    "    }\n",
+    r"(?m)^(\s*)HMONITOR\s+monitor\s*=\s*wsi::enumMonitors\(luidPointers\.data\(\),\s*luidPointers\.size\(\),\s*Output\);\s*$",
+    r'''\1UINT physicalOutput = Output;
+
+\1const DxgiOptions* options = m_factory->GetOptions();
+\1if (options->outputIndex >= 0) {
+\1  const UINT selectedOutput = UINT(options->outputIndex);
+
+\1  if (Output == 0)
+\1    physicalOutput = selectedOutput;
+\1  else if (Output <= selectedOutput)
+\1    physicalOutput = Output - 1;
+\1}
+
+\1HMONITOR monitor = wsi::enumMonitors(
+\1  luidPointers.data(), luidPointers.size(), physicalOutput);
+
+\1if (monitor != nullptr && options->outputIndex >= 0 && Output == 0) {
+\1  Logger::info(str::format(
+\1    "DXGI: Forcing physical output ", physicalOutput,
+\1    " to IDXGI output 0"));
+\1}''',
 )
 
 print("DXVK output-selector source edits applied successfully.")
