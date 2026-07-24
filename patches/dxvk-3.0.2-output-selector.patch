@@ -18,13 +18,13 @@ diff --git a/src/dxgi/dxgi_options.cpp b/src/dxgi/dxgi_options.cpp
 --- a/src/dxgi/dxgi_options.cpp
 +++ b/src/dxgi/dxgi_options.cpp
 @@ -157,6 +157,7 @@ namespace dxvk {
-     this->maxFrameRate     = config.getOption<int32_t>("dxvk.maxFrameRate", config.getOption<int32_t>("dxgi.maxFrameRate", 0));
-     this->syncInterval     = config.getOption<int32_t>("dxgi.syncInterval", -1);
-     this->forceRefreshRate = config.getOption<uint32_t>("dxgi.forceRefreshRate", 0u);
-+    this->outputIndex      = config.getOption<int32_t>("dxgi.outputIndex", -1);
+     this->maxFrameRate     = config.getOption("dxvk.maxFrameRate", config.getOption("dxgi.maxFrameRate", 0));
+     this->syncInterval     = config.getOption("dxgi.syncInterval", -1);
+     this->forceRefreshRate = config.getOption("dxgi.forceRefreshRate", 0u);
++    this->outputIndex      = config.getOption("dxgi.outputIndex", -1);
  
      // We don't support dcomp swapchains and some games may rely on them failing on creation
-     this->enableDummyCompositionSwapchain = config.getOption<bool>("dxgi.enableDummyCompositionSwapchain", false);
+     this->enableDummyCompositionSwapchain = config.getOption("dxgi.enableDummyCompositionSwapchain", false);
 diff --git a/src/dxgi/dxgi_adapter.cpp b/src/dxgi/dxgi_adapter.cpp
 --- a/src/dxgi/dxgi_adapter.cpp
 +++ b/src/dxgi/dxgi_adapter.cpp
