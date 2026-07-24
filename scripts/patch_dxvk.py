@@ -1,58 +1,84 @@
 from pathlib import Path
-import re
 
 
-def edit_once(path: str, pattern: str, replacement: str, flags: int = 0) -> None:
-    file_path = Path(path)
-    text = file_path.read_text(encoding="utf-8")
-    updated, count = re.subn(pattern, replacement, text, count=1, flags=flags)
-    if count != 1:
-        raise SystemExit(f"Expected exactly one regex match in {path}, found {count}")
-    file_path.write_text(updated, encoding="utf-8")
+def insert_after_line(path: str, needle: str, new_lines: list[str]) -> None:
+    p = Path(path)
+    lines = p.read_text(encoding="utf-8").splitlines()
+    matches = [i for i, line in enumerate(lines) if needle in line]
+    if len(matches) != 1:
+        context = "\n".join(line for line in lines if needle.split("(")[0] in line)
+        raise SystemExit(
+            f"Expected one line containing {needle!r} in {path}, found {len(matches)}.\n"
+            f"Related lines:\n{context}"
+        )
+    i = matches[0]
+    lines[i + 1:i + 1] = new_lines
+    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-# Add the configuration field directly after forceRefreshRate, tolerating
-# whitespace/alignment differences in the tagged source.
-edit_once(
+def replace_line_with_block(path: str, required_parts: tuple[str, ...], block: list[str]) -> None:
+    p = Path(path)
+    lines = p.read_text(encoding="utf-8").splitlines()
+    matches = [
+        i for i, line in enumerate(lines)
+        if all(part in line for part in required_parts)
+    ]
+    if len(matches) != 1:
+        related = "\n".join(line for line in lines if "enumMonitors" in line)
+        raise SystemExit(
+            f"Expected one matching line in {path}, found {len(matches)}.\n"
+            f"enumMonitors lines:\n{related}"
+        )
+    i = matches[0]
+    indent = lines[i][:len(lines[i]) - len(lines[i].lstrip())]
+    rendered = [indent + line if line else "" for line in block]
+    lines[i:i + 1] = rendered
+    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+insert_after_line(
     "src/dxgi/dxgi_options.h",
-    r"(?m)^(\s*uint32_t\s+forceRefreshRate\s*;\s*)$",
-    r"\1\n\n    /// Move the selected physical DXGI output to output index 0.\n"
-    r"    /// A negative value keeps the normal enumeration order.\n"
-    r"    int32_t outputIndex;",
+    "uint32_t forceRefreshRate;",
+    [
+        "",
+        "    /// Move the selected physical DXGI output to output index 0.",
+        "    /// A negative value keeps the normal enumeration order.",
+        "    int32_t outputIndex;",
+    ],
 )
 
-# Insert config parsing after the existing force-refresh-rate option.
-edit_once(
+# Match only the stable option name, not spacing or the exact getOption syntax.
+insert_after_line(
     "src/dxgi/dxgi_options.cpp",
-    r'(?m)^(\s*this->forceRefreshRate\s*=\s*config\.getOption\("dxgi\.forceRefreshRate",\s*0u\);\s*)$',
-    r'\1\n    this->outputIndex = config.getOption("dxgi.outputIndex", -1);',
+    '"dxgi.forceRefreshRate"',
+    ['    this->outputIndex = config.getOption("dxgi.outputIndex", -1);'],
 )
 
-# Replace only the monitor enumeration statement. Keeping the surrounding
-# source untouched makes this resilient to formatting changes.
-edit_once(
+replace_line_with_block(
     "src/dxgi/dxgi_adapter.cpp",
-    r"(?m)^(\s*)HMONITOR\s+monitor\s*=\s*wsi::enumMonitors\(luidPointers\.data\(\),\s*luidPointers\.size\(\),\s*Output\);\s*$",
-    r'''\1UINT physicalOutput = Output;
-
-\1const DxgiOptions* options = m_factory->GetOptions();
-\1if (options->outputIndex >= 0) {
-\1  const UINT selectedOutput = UINT(options->outputIndex);
-
-\1  if (Output == 0)
-\1    physicalOutput = selectedOutput;
-\1  else if (Output <= selectedOutput)
-\1    physicalOutput = Output - 1;
-\1}
-
-\1HMONITOR monitor = wsi::enumMonitors(
-\1  luidPointers.data(), luidPointers.size(), physicalOutput);
-
-\1if (monitor != nullptr && options->outputIndex >= 0 && Output == 0) {
-\1  Logger::info(str::format(
-\1    "DXGI: Forcing physical output ", physicalOutput,
-\1    " to IDXGI output 0"));
-\1}''',
+    ("HMONITOR monitor", "wsi::enumMonitors", "Output"),
+    [
+        "UINT physicalOutput = Output;",
+        "",
+        "const DxgiOptions* options = m_factory->GetOptions();",
+        "if (options->outputIndex >= 0) {",
+        "  const UINT selectedOutput = UINT(options->outputIndex);",
+        "",
+        "  if (Output == 0)",
+        "    physicalOutput = selectedOutput;",
+        "  else if (Output <= selectedOutput)",
+        "    physicalOutput = Output - 1;",
+        "}",
+        "",
+        "HMONITOR monitor = wsi::enumMonitors(",
+        "  luidPointers.data(), luidPointers.size(), physicalOutput);",
+        "",
+        "if (monitor != nullptr && options->outputIndex >= 0 && Output == 0) {",
+        "  Logger::info(str::format(",
+        '    "DXGI: Forcing physical output ", physicalOutput,',
+        '    " to IDXGI output 0"));',
+        "}",
+    ],
 )
 
 print("DXVK output-selector source edits applied successfully.")
