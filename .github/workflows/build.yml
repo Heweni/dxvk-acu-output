@@ -1,0 +1,43 @@
+name: Build patched DXVK 3.0.2
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-x64:
+    name: Build x64 DLLs
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out builder files
+        uses: actions/checkout@v4
+
+      - name: Build patched DXVK
+        uses: Joshua-Ashton/arch-mingw-github-action@v8
+        with:
+          command: |
+            set -euxo pipefail
+            git clone --branch v3.0.2 --depth 1 --recurse-submodules \
+              https://github.com/doitsujin/dxvk.git dxvk
+            cd dxvk
+            git apply --check ../patches/dxvk-3.0.2-output-selector.patch
+            git apply ../patches/dxvk-3.0.2-output-selector.patch
+            ./package-release.sh acu-output-selector build --no-package
+
+            mkdir -p ../artifact/x64
+            cp build/dxvk-acu-output-selector/x64/d3d11.dll ../artifact/x64/
+            cp build/dxvk-acu-output-selector/x64/dxgi.dll ../artifact/x64/
+            cp ../dxvk.conf ../artifact/
+            cp ../TESTING.txt ../artifact/
+            sha256sum ../artifact/x64/*.dll > ../artifact/SHA256SUMS.txt
+
+      - name: Upload DLL package
+        uses: actions/upload-artifact@v4
+        with:
+          name: acu-dxvk-3.0.2-output-selector-x64
+          path: artifact
+          if-no-files-found: error
+          retention-days: 30
