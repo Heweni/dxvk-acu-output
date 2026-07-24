@@ -28,7 +28,7 @@ diff --git a/src/dxgi/dxgi_options.cpp b/src/dxgi/dxgi_options.cpp
 diff --git a/src/dxgi/dxgi_adapter.cpp b/src/dxgi/dxgi_adapter.cpp
 --- a/src/dxgi/dxgi_adapter.cpp
 +++ b/src/dxgi/dxgi_adapter.cpp
-@@ -124,10 +124,31 @@ namespace dxvk {
+@@ -124,10 +124,32 @@ namespace dxvk {
      if (m_factory->UseMonitorFallback())
        adapterLUIDs.clear();
  
